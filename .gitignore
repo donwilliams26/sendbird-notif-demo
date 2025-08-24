@@ -1,0 +1,9 @@
+# Ignore all node dependencies
+node_modules/
+
+# Ignore all environment variable files
+.env
+
+# Ignore React build output
+uikit-react-example/build/
+
