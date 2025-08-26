@@ -7,8 +7,8 @@ function App() {
   const [notif, setNotif] = useState(null);
 
   useEffect(() => {
-    // Connect to my backend
-    const socket = io('http://localhost:3000'); // replace with my server URL
+    // Connect to your backend
+    const socket = io('http://localhost:3000'); // replace with your server URL
 
     socket.on('profanity_detected', (data) => {
       console.log('Profanity event received:', data);
@@ -28,7 +28,7 @@ function App() {
     return () => socket.disconnect();
   }, []);
 
-  // Ask for notification permission on load!
+  // Ask for notification permission on load
   useEffect(() => {
     if (Notification.permission !== 'granted') {
       Notification.requestPermission();

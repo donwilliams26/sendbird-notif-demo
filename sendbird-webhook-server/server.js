@@ -1,46 +1,66 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const http = require('http');
-const { Server } = require('socket.io');
+// server.js
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import crypto from 'crypto';
+import cors from 'cors';
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: "*", // for testing, allow all origins
-  },
+  cors: { origin: '*' }
 });
 
-const PORT = 3000;
+// IMPORTANT: use express.text() for raw body so signature validation works
+app.use('/webhook', express.text({ type: 'json' }));
+app.use(cors());
 
-app.use(bodyParser.json());
-
-// Optional GET route
-app.get('/', (req, res) => res.send('Webhook server is running!'));
-
-// POST /webhook route (Sendbird sends events here)
+// Webhook endpoint with x-sendbird-signature validation
 app.post('/webhook', (req, res) => {
-  const webhookEvent = req.body;
-  console.log('Webhook received:', webhookEvent);
+  try {
+    const signature = req.get('x-sendbird-signature');
+    const body = req.body; // still raw string here
+    const masterToken = process.env.SENDBIRD_MASTER_API_TOKEN; // use your Master API Token
 
-  // Example: check if the event is profanity
-  if (webhookEvent.category?.startsWith('profanity_filter:')) {
+    // HMAC-SHA256 hash
+    const hash = crypto.createHmac('sha256', masterToken).update(body).digest('hex');
 
-    io.emit('profanity_detected', {
-      sender: webhookEvent.sender,
-      message: webhookEvent.payload?.message || 'Message flagged',
-      category: webhookEvent.category
-    });
+    if (signature !== hash) {
+      console.warn('Invalid signature, rejecting webhook');
+      return res.sendStatus(401);
+    }
+
+    // ✅ Signature verified → parse body to JSON
+    const event = JSON.parse(body);
+    console.log('Webhook received:', event);
+
+    // Handle profanity events
+    if (event.category === 'message' && event.type === 'profanity') {
+      io.emit('profanity_detected', {
+        sender: event.sender,
+        message: event.message
+      });
+    }
+
+    // Handle group channel creation
+    if (event.category === 'channel' && event.type === 'group_channel:create') {
+      const channelUrl = event.channel?.channel_url;
+      console.log('New group channel created:', channelUrl);
+      // (Optional) Add metadata or send admin message here
+    }
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('Error in webhook handler:', err);
+    res.sendStatus(500);
   }
-
-  res.sendStatus(200); // always respond 200 OK
 });
 
-// Socket.IO connection
+app.get('/', (req, res) => res.send('Your backend server is now running'));
+
 io.on('connection', (socket) => {
   console.log('Frontend connected via Socket.IO');
 });
 
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
